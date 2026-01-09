@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Check, Info, Truck, CreditCard, Loader2, AlertTriangle } from 'lucide-react';
 import { FormData, Measurement } from '../types';
 import { submitOrder } from '../services/supabase';
+import { generateCustomerEmailTemplate, generateAdminEmailTemplate } from '../services/emailTemplates';
 
 interface Step4Props {
   formData: FormData;
@@ -10,13 +11,16 @@ interface Step4Props {
   totalUnits: number;
   hidePrice: boolean;
   selectedType: any;
+  selectedCategory: string;
+  combinedComponents: any[];
 }
 
 const generateOrderEmailHtml = (
   formData: FormData,
   measurements: Measurement[],
   totalPrice: number,
-  selectedType: any
+  selectedType: any,
+  selectionSummary: string
 ) => {
   const date = new Date().toLocaleDateString('es-ES');
   const itemsHtml = measurements.map((m, i) => `
@@ -39,6 +43,8 @@ const generateOrderEmailHtml = (
       <p><strong>Contacto:</strong> ${formData.firstName} ${formData.lastName}</p>
       <p><strong>Email:</strong> ${formData.email}</p>
       <p><strong>Teléfono:</strong> ${formData.phone}</p>
+      <p><strong>Direccion:</strong> ${formData.direccion}</p>
+      <p><strong>Zona:</strong> ${formData.region}</p>
       <p><strong>Tipo de Solicitud:</strong> ${formData.goal === 'info' ? 'Solicitud de Información / Consulta' : 'Pedido de Presupuesto'}</p>
 
       <h3 style="background-color: #f3f4f6; padding: 10px;">Detalle de Medidas</h3>
@@ -55,6 +61,9 @@ const generateOrderEmailHtml = (
           ${itemsHtml}
         </tbody>
       </table>
+
+      <h3 style="background-color: #f3f4f6; padding: 10px;">Seleccion</h3>
+      <p>${selectionSummary}</p>
       
       <div style="margin-top: 20px; text-align: right;">
         <p style="font-size: 1.2em;"><strong>Total Estimado: ${totalPrice.toFixed(2)}€</strong></p>
@@ -73,12 +82,20 @@ export const Step4: React.FC<Step4Props> = ({
   totalPrice,
   totalUnits,
   hidePrice,
-  selectedType
+  selectedType,
+  selectedCategory,
+  combinedComponents
 }) => {
+  const selectedItems = selectedCategory === 'combinado'
+    ? (combinedComponents || [])
+    : (selectedType?.material ? [selectedType.material] : []);
+  const items = selectedItems;
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [orderReference, setOrderReference] = useState('');
 
   const handleSubmit = async () => {
     if (!termsAccepted) {
@@ -90,26 +107,95 @@ export const Step4: React.FC<Step4Props> = ({
     setErrorMsg(null);
 
     try {
+      const selection = {
+        category: selectedCategory,
+        label: selectedType?.label || '',
+        items: selectedItems.map((item: any) => ({
+          id: item.id,
+          tipo: item.tipo,
+          nombre: item.nombre,
+          codigo: item.codigo,
+          descripcion: item.descripcion || '',
+          frunce: item.frunce_default || 0,
+          color: item.color || ''
+        }))
+      };
+
+      const pricing = {
+        total_price: totalPrice,
+        total_units: totalUnits,
+        items: measurements.map((m) => ({
+          id: m.id,
+          price_unit: m.price,
+          quantity: m.quantity,
+          subtotal: m.price * m.quantity
+        }))
+      };
+
+      const metadata = {
+        created_at: new Date().toISOString(),
+        hide_price: hidePrice
+      };
+
+      const selectionSummary = items.length === 0
+        ? 'Sin seleccion'
+        : items.map((item: any) => `${item.nombre} (${item.codigo})`).join(', ');
+
       const orderPayload = {
         customer_info: formData,
         measurements: measurements,
-        selected_type: selectedType,
+        selected_type: selectedType || {
+          id: selectedCategory || 'sin_tipo',
+          label: selectedCategory || 'Sin tipo'
+        },
         total_price: totalPrice,
-        total_units: totalUnits
+        total_units: totalUnits,
+        selection,
+        pricing,
+        metadata
       };
 
-      // 1. Generate Email HTML
-      const emailHtml = generateOrderEmailHtml(formData, measurements, totalPrice, selectedType);
-      
-      // 2. Log sending simulation
-      console.log("--- SIMULATING EMAIL SENDING ---");
-      console.log("BODY HTML:", emailHtml);
-      console.log("--------------------------------");
-
-      // 3. Submit to Supabase (Mocked)
-      const { error } = await submitOrder(orderPayload);
+      // 1. Submit to Supabase first to get the reference number
+      const { data, error } = await submitOrder(orderPayload);
 
       if (error) throw error;
+      const referenceNumber = data?.reference_number || '';
+      setOrderReference(referenceNumber);
+
+      // 2. Generate Email Templates with the real reference number
+      const customerEmailHtml = generateCustomerEmailTemplate({
+        formData,
+        measurements,
+        totalPrice,
+        selectedType,
+        selectionSummary: items,
+        referenceNumber,
+        isInfoMode,
+        hidePrice
+      });
+
+      const adminEmailHtml = generateAdminEmailTemplate({
+        formData,
+        measurements,
+        totalPrice,
+        selectedType,
+        selectionSummary: items,
+        referenceNumber,
+        isInfoMode,
+        hidePrice
+      });
+      
+      // 3. Log email sending simulation
+      console.log("--- ENVIANDO CORREOS ---");
+      console.log("📧 Correo al cliente:", formData.email);
+      console.log("📧 Correo a administración: pedido@egea.com");
+      console.log("📋 Referencia:", referenceNumber);
+      console.log("--- PLANTILLA CLIENTE ---");
+      console.log(customerEmailHtml);
+      console.log("--- PLANTILLA ADMIN ---");
+      console.log(adminEmailHtml);
+      console.log("--------------------------------");
+
       setIsSuccess(true);
     } catch (err: any) {
       console.error(err);
@@ -127,11 +213,12 @@ export const Step4: React.FC<Step4Props> = ({
         </div>
         <div>
           <h2 className="text-2xl font-bold text-gray-800">¡Solicitud Recibida!</h2>
-          <p className="text-gray-600 mt-2">Hemos enviado una copia de tu solicitud a <span className="font-bold text-gray-800">{formData.email}</span>.</p>
+          <p className="text-gray-600 mt-2">Gracias, {formData.firstName} {formData.lastName}. Hemos enviado una copia de tu solicitud a <span className="font-bold text-gray-800">{formData.email}</span>.</p>
           <p className="text-xs text-gray-400 mt-1">También se ha notificado a pedido@egea.com</p>
+          <p className="text-sm text-green-600 mt-2 font-medium">✅ Correos enviados correctamente</p>
         </div>
         <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-500 max-w-sm">
-           Número de referencia: <span className="font-mono text-gray-800">#{Math.floor(Math.random() * 100000)}</span>
+           Número de referencia: <span className="font-mono text-gray-800">#{orderReference}</span>
         </div>
         <button onClick={() => window.location.reload()} className="text-orange-500 underline font-medium">
           Volver al inicio
@@ -147,9 +234,12 @@ export const Step4: React.FC<Step4Props> = ({
     <div className="space-y-6 animate-fadeIn h-full flex flex-col">
       <div className="flex-1">
         {/* TITULO MODIFICADO */}
-        <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-          <Check className="text-green-500" /> Resumen de la solicitud de presupuesto
-        </h2>
+        <div className="flex flex-col items-center gap-3 mb-4 text-center">
+          <img src="/image/logo-placeholder.jpg.png" alt="Logo EGEA" className="h-10 object-contain" />
+          <h2 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
+            <Check className="text-green-500" /> Resumen de la solicitud de presupuesto
+          </h2>
+        </div>
 
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
           <div className="p-4 border-b border-gray-100 bg-gray-50">
@@ -161,8 +251,34 @@ export const Step4: React.FC<Step4Props> = ({
             <p><span className="font-medium text-gray-900">Contacto:</span> {formData.firstName} {formData.lastName}</p>
             <p><span className="font-medium text-gray-900">Email:</span> {formData.email}</p>
             <p><span className="font-medium text-gray-900">Teléfono:</span> {formData.phone}</p>
+            <p><span className="font-medium text-gray-900">Direccion:</span> {formData.direccion}</p>
+            <p><span className="font-medium text-gray-900">Zona:</span> {formData.region}</p>
+            {selectedType?.label && (
+              <p><span className="font-medium text-gray-900">Combinacion:</span> {selectedType.label}</p>
+            )}
+            {selectedType?.id === 'personalizado' && selectedType?.customDescription && (
+              <p className="md:col-span-2"><span className="font-medium text-gray-900">Detalle:</span> {selectedType.customDescription}</p>
+            )}
           </div>
         </div>
+
+        {items.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+            <div className="p-4 border-b border-gray-100 bg-gray-50">
+              <h3 className="font-bold text-gray-700">Seleccion</h3>
+            </div>
+            <div className="p-4 text-sm text-gray-600 space-y-2">
+              {items.map((item: any) => (
+                <div key={item.id} className="border border-gray-100 rounded-lg p-3">
+                  <div className="font-medium text-gray-800">{item.nombre} ({item.codigo})</div>
+                  {item.descripcion && <div className="text-xs text-gray-500">{item.descripcion}</div>}
+                  {item.frunce_default && <div className="text-xs text-gray-500">Frunce: {item.frunce_default}</div>}
+                  {item.color && <div className="text-xs text-gray-500">Color: {item.color}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {measurements.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

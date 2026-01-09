@@ -24,12 +24,12 @@ export const Welcome: React.FC<WelcomeProps> = ({ onStart }) => {
             </div>
         </div>
 
-        <h1 className="text-3xl md:text-5xl font-bold text-gray-900 mb-6 leading-tight tracking-tight">
-          <span className="text-orange-500">Enhorabuena,</span> estás a punto de empezar.
+        <h1 className="text-2xl md:text-4xl font-bold text-gray-900 leading-tight tracking-tight mb-6">
+          Configurador EGEA de Cortinas Express
         </h1>
         
         <p className="text-lg md:text-xl text-gray-600 mb-14 md:mb-20 leading-relaxed font-medium">
-          La manera más rápida, económica y efectiva de renovar tus cortinas para esta temporada.
+          La manera mas rapida, economica y efectiva de renovar tus cortinas para esta temporada.
         </p>
 
         <button
@@ -45,8 +45,8 @@ export const Welcome: React.FC<WelcomeProps> = ({ onStart }) => {
         {/* Logo Egea */}
         <div className="mb-8">
             <img 
-              src="https://egea-main-control.vercel.app/logo-placeholder.png" 
-              alt="Egea Textil" 
+              src="/image/logo-placeholder.jpg.png" 
+              alt="Logo EGEA" 
               className="h-16 md:h-20 object-contain"
             />
         </div>
@@ -56,7 +56,6 @@ export const Welcome: React.FC<WelcomeProps> = ({ onStart }) => {
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
                 Sin compromiso
             </div>
-            {/* Texto "Exclusivo para profesionales" añadido según requisitos */}
             <div className="flex items-center justify-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
                 Exclusivo para profesionales

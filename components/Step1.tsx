@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check, Building2, FileText } from 'lucide-react';
 import { FormData } from '../types';
+import { validateCIF, validateEmail, validatePhone } from '../utils/validation';
 
 interface Step1Props {
   formData: FormData;
@@ -15,6 +16,10 @@ export const Step1: React.FC<Step1Props> = ({ formData, setFormData }) => {
   const inputBaseClass = "w-full p-2 md:p-2.5 text-sm border rounded-lg outline-none transition-colors duration-200 placeholder-gray-400";
   const inputDefaultClass = "bg-white border-gray-200 text-gray-900 focus:border-orange-500 focus:bg-white";
   const inputErrorClass = "bg-orange-50 border-orange-200 text-gray-900 focus:border-orange-500";
+  const isCifValid = formData.cif ? validateCIF(formData.cif.toUpperCase()) : false;
+  const isEmailValid = formData.email ? validateEmail(formData.email) : false;
+  const isPhoneValid = formData.phone ? validatePhone(formData.phone) : false;
+  const isRegionValid = formData.region ? true : false;
 
   return (
     <div className="space-y-3 animate-fadeIn">
@@ -48,8 +53,8 @@ export const Step1: React.FC<Step1Props> = ({ formData, setFormData }) => {
               <input
                 type="text"
                 value={formData.cif}
-                onChange={(e) => handleChange('cif', e.target.value)}
-                className={`${inputBaseClass} ${!formData.cif ? inputErrorClass : inputDefaultClass}`}
+                onChange={(e) => handleChange('cif', e.target.value.toUpperCase().replace(/\s|-/g, ''))}
+                className={`${inputBaseClass} ${(!formData.cif || !isCifValid) ? inputErrorClass : inputDefaultClass}`}
                 placeholder="B12345678"
               />
             </div>
@@ -90,7 +95,7 @@ export const Step1: React.FC<Step1Props> = ({ formData, setFormData }) => {
               type="email"
               value={formData.email}
               onChange={(e) => handleChange('email', e.target.value)}
-              className={`${inputBaseClass} ${!formData.email ? inputErrorClass : inputDefaultClass}`}
+              className={`${inputBaseClass} ${(!formData.email || !isEmailValid) ? inputErrorClass : inputDefaultClass}`}
               placeholder="email@empresa.com"
             />
           </div>
@@ -101,9 +106,41 @@ export const Step1: React.FC<Step1Props> = ({ formData, setFormData }) => {
               type="tel"
               value={formData.phone}
               onChange={(e) => handleChange('phone', e.target.value)}
-              className={`${inputBaseClass} ${!formData.phone ? inputErrorClass : inputDefaultClass}`}
+              className={`${inputBaseClass} ${(!formData.phone || !isPhoneValid) ? inputErrorClass : inputDefaultClass}`}
               placeholder="600 000 000"
             />
+          </div>
+        </div>
+      </div>
+
+
+      <div>
+        <h3 className="text-xs font-bold text-gray-700 uppercase mb-2 flex items-center gap-2">
+           <Building2 size={14} /> Datos de Entrega
+        </h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-gray-500 uppercase">Direccion *</label>
+            <input
+              type="text"
+              value={formData.direccion}
+              onChange={(e) => handleChange('direccion', e.target.value)}
+              className={`${inputBaseClass} ${!formData.direccion ? inputErrorClass : inputDefaultClass}`}
+              placeholder="Calle, numero, ciudad"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-gray-500 uppercase">Zona *</label>
+            <select
+              value={formData.region}
+              onChange={(e) => handleChange('region', e.target.value)}
+              className={`${inputBaseClass} ${!isRegionValid ? inputErrorClass : inputDefaultClass}`}
+            >
+              <option value="">Selecciona una zona</option>
+              <option value="Illes Balears">Illes Balears</option>
+              <option value="Peninsula">Peninsula</option>
+              <option value="Islas Canarias">Islas Canarias</option>
+            </select>
           </div>
         </div>
       </div>
@@ -113,7 +150,7 @@ export const Step1: React.FC<Step1Props> = ({ formData, setFormData }) => {
         <div className="grid grid-cols-2 gap-3">
           {[
             { id: 'info', label: 'Más información' },
-            { id: 'simulation', label: 'Simular medidas' }
+            { id: 'simulation', label: 'Mis Medidas' }
           ].map((option) => (
             <button
               key={option.id}
@@ -137,3 +174,4 @@ export const Step1: React.FC<Step1Props> = ({ formData, setFormData }) => {
     </div>
   );
 };
+

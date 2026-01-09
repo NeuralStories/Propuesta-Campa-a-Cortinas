@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ArrowRight, 
   ArrowLeft, 
@@ -12,12 +12,30 @@ import { Step1 } from './components/Step1';
 import { Step2 } from './components/Step2';
 import { Step3 } from './components/Step3';
 import { Step4 } from './components/Step4';
+import { AdminApp } from './admin/AdminApp';
 
-import { FormData, CurtainType, Measurement } from './types';
-import { CURTAIN_TYPES, MINIMUM_UNITS, MAX_HEIGHT, HIDE_PRICE_THRESHOLD } from './constants';
+import { FormData, CurtainType, Measurement, Material } from './types';
+import { MINIMUM_UNITS, MAX_HEIGHT, HIDE_PRICE_THRESHOLD } from './constants';
+import { validateCIF, validateEmail, validatePhone } from './utils/validation';
+import { getMaterials } from './services/supabase';
 
 export default function App() {
+  const [isAdminRoute, setIsAdminRoute] = useState(false);
+
+  useEffect(() => {
+    const checkRoute = () => {
+      setIsAdminRoute(window.location.hash.startsWith('#/admin'));
+    };
+    checkRoute();
+    window.addEventListener('hashchange', checkRoute);
+    return () => window.removeEventListener('hashchange', checkRoute);
+  }, []);
+
   const [step, setStep] = useState(0); // 0 = Welcome Screen
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [combinedComponents, setCombinedComponents] = useState<Material[]>([]);
+  const [combinedMaterial, setCombinedMaterial] = useState<Material | null>(null);
   const [formData, setFormData] = useState<FormData>({
     firstName: '',
     lastName: '',
@@ -25,13 +43,13 @@ export default function App() {
     phone: '',
     razonSocial: '', // Inicialización
     cif: '',         // Inicialización
+    direccion: '',
+    region: '',
     goal: 'simulation', 
   });
   
   const [selectedType, setSelectedType] = useState<CurtainType | null>(null);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
-  const [currentMeasure, setCurrentMeasure] = useState({ width: '', height: '' });
-  const [heightError, setHeightError] = useState(false);
   
   // Logic
   const calculateTotal = () => measurements.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -39,10 +57,32 @@ export default function App() {
 
   const totalPrice = calculateTotal();
   const totalUnits = calculateUnits();
-  
+  const isCustomCombination = selectedCategory === 'personalizado';
+  const typeLabels: Record<string, string> = {
+    cortina: 'Cortinas',
+    visillo: 'Visillos',
+    oscurante: 'Oscurante',
+    opacante: 'Opacante',
+    combinado: 'Combinado',
+    personalizado: 'Personalizado'
+  };
+  const selectedLabel = selectedCategory ? typeLabels[selectedCategory] : 'Opcion Tipo';
+  const selectedModel = selectedType?.material?.nombre || selectedType?.label || '';
+  const selectedDescription = selectedType?.material?.descripcion || '';
+  const combinedSummary = combinedComponents.map((item) => ({
+    id: item.id,
+    name: item.nombre || item.codigo,
+    description: item.descripcion || '',
+    frunce: item.frunce_default || 0
+  }));
+  const selectedFrunce = selectedType?.material?.frunce_default || 0;
+  const selectedMaterials = selectedCategory === 'combinado'
+    ? combinedComponents
+    : (selectedType?.material ? [selectedType.material] : []);
+  const canProceedStep2 = selectedCategory !== '';
   // LÓGICA DE NEGOCIO ACTUALIZADA:
   // Se oculta el precio si las unidades superan el umbral O si el precio total supera los 2500€
-  const hidePrice = totalUnits > HIDE_PRICE_THRESHOLD || totalPrice > 2500;
+  const hidePrice = isCustomCombination || totalUnits > HIDE_PRICE_THRESHOLD || totalPrice > 2500;
 
   const calculateProgress = () => {
     let progress = 0;
@@ -59,10 +99,12 @@ export default function App() {
             formData.email, 
             formData.phone,
             formData.razonSocial,
-            formData.cif
+            formData.cif,
+            formData.direccion,
+            formData.region
         ];
         const filled = fields.filter(f => f && f.trim() !== '').length;
-        progress += (filled / 6) * 25; // Dividido por 6 campos totales
+        progress += (filled / 8) * 25; // Dividido por 8 campos totales
     }
     // Step 2: 25%
     if (step > 2) {
@@ -92,9 +134,14 @@ export default function App() {
     formData.firstName && 
     formData.lastName && 
     formData.email && 
-    formData.phone &&
+    validateEmail(formData.email) && 
+    formData.phone && 
+    validatePhone(formData.phone) && 
     formData.razonSocial && 
-    formData.cif;
+    formData.cif && 
+    validateCIF(formData.cif.toUpperCase()) &&
+    formData.direccion &&
+    formData.region;
 
   const handleNext = () => {
     if (step === 0) {
@@ -106,6 +153,9 @@ export default function App() {
         } else {
             setStep(2);
         }
+    } else if (step === 2) {
+        if (!canProceedStep2) return;
+        setStep(3);
     } else if (step === 3) {
         if (totalUnits < MINIMUM_UNITS) {
             setFormData(prev => ({ ...prev, goal: 'info' }));
@@ -126,6 +176,83 @@ export default function App() {
         setStep(step - 1);
     }
   };
+
+  useEffect(() => {
+    const loadMaterials = async () => {
+      try {
+        const materials = await getMaterials();
+        if (materials.length === 0) return;
+        setMaterials(materials);
+      } catch {
+        // keep defaults
+      }
+    };
+    loadMaterials();
+  }, []);
+
+  useEffect(() => {
+    const refreshOnStep = async () => {
+      if (step !== 2) return;
+      try {
+        const materials = await getMaterials();
+        if (materials.length === 0) return;
+        setMaterials(materials);
+      } catch {
+        // ignore
+      }
+    };
+    refreshOnStep();
+  }, [step]);
+
+  const buildCurtainType = (material: Material): CurtainType => ({
+    id: material.id,
+    label: material.nombre || material.codigo,
+    description: material.codigo || '',
+    pricePerM2: 0,
+    isCustom: material.tipo === 'personalizado',
+    material
+  });
+
+  useEffect(() => {
+    if (!selectedType?.material?.id) return;
+    const updated = materials.find((m) => m.id === selectedType.material?.id);
+    if (!updated) return;
+    setSelectedType(buildCurtainType(updated));
+  }, [materials]);
+
+  const matchCombinedMaterial = (components: Material[]) => {
+    const ids = components.map((c) => c.id).sort();
+    return materials.find((m) => {
+      if (m.tipo !== 'combinado') return false;
+      const comp = (m.componentes || []).slice().sort();
+      if (comp.length !== ids.length) return false;
+      return comp.every((id, idx) => id === ids[idx]);
+    });
+  };
+
+  useEffect(() => {
+    if (selectedCategory !== 'combinado') {
+      setCombinedMaterial(null);
+      return;
+    }
+    if (combinedComponents.length === 0) {
+      setCombinedMaterial(null);
+      setSelectedType(null);
+      return;
+    }
+    const matched = matchCombinedMaterial(combinedComponents);
+    if (matched) {
+      setCombinedMaterial(matched);
+      setSelectedType(buildCurtainType(matched));
+    } else {
+      setCombinedMaterial(null);
+      setSelectedType(null);
+    }
+  }, [combinedComponents, materials, selectedCategory]);
+
+  if (isAdminRoute) {
+    return <AdminApp />;
+  }
 
   return (
     <div className="min-h-screen bg-[#FDF4F5] flex items-center justify-center p-2 md:p-6 font-sans">
@@ -173,23 +300,27 @@ export default function App() {
                         )}
                         {step === 2 && (
                         <Step2 
-                            curtainTypes={CURTAIN_TYPES}
+                            materials={materials.length ? materials : []}
+                            selectedCategory={selectedCategory}
+                            setSelectedCategory={setSelectedCategory}
                             selectedType={selectedType} 
                             setSelectedType={setSelectedType} 
+                            combinedComponents={combinedComponents}
+                            setCombinedComponents={setCombinedComponents}
                         />
                         )}
                         {step === 3 && (
                         <Step3 
                             measurements={measurements} 
                             setMeasurements={setMeasurements}
-                            currentMeasure={currentMeasure}
-                            setCurrentMeasure={setCurrentMeasure}
-                            heightError={heightError}
-                            setHeightError={setHeightError}
                             selectedType={selectedType}
+                            selectedMaterials={selectedMaterials}
                             totalPrice={totalPrice}
                             hidePrice={hidePrice}
                             maxHeight={MAX_HEIGHT}
+                            minUnits={MINIMUM_UNITS}
+                            totalUnits={totalUnits}
+                            isCustomCombination={isCustomCombination}
                         />
                         )}
                         {step === 4 && (
@@ -200,6 +331,8 @@ export default function App() {
                             totalUnits={totalUnits} 
                             hidePrice={hidePrice}
                             selectedType={selectedType}
+                            selectedCategory={selectedCategory}
+                            combinedComponents={combinedComponents}
                         />
                         )}
                     </div>
@@ -217,7 +350,7 @@ export default function App() {
                             }`}
                         >
                             {(totalUnits >= MINIMUM_UNITS && !hidePrice) 
-                                ? 'Me interesa (Comprar)' 
+                                ? 'Me interesa' 
                                 : 'Más información'
                             }
                         </button>
@@ -226,7 +359,7 @@ export default function App() {
                                 onClick={handleNext}
                                 disabled={
                                     (step === 1 && !canProceedStep1) || 
-                                    (step === 2 && !selectedType)
+                                    (step === 2 && !canProceedStep2)
                                 }
                                 className="w-full md:w-auto bg-gray-900 text-white px-8 py-3 rounded-xl font-medium flex items-center justify-center md:justify-start gap-2 hover:bg-gray-800 transition-all disabled:opacity-50 disabled:translate-y-0 hover:-translate-y-0.5 active:scale-95"
                             >
@@ -258,7 +391,33 @@ export default function App() {
                                 <div>
                                     <div className="hidden md:block mb-6">
                                         <h3 className="font-bold text-gray-800 mb-2">Estilo y Tejido</h3>
-                                        <p className="text-sm text-gray-500">Seleccionaste: <span className="font-bold text-orange-500">{selectedType?.label || '...'}</span></p>
+                                        <p className="text-sm text-gray-500">Seleccionaste: <span className="font-bold text-orange-500">{selectedLabel || 'Opcion Tipo'}</span></p>
+                                        {selectedCategory === 'combinado' && combinedSummary.length > 0 ? (
+                                            <div className="mt-3 space-y-3 text-xs text-gray-600">
+                                                {combinedSummary.map((item) => (
+                                                    <div key={item.id}>
+                                                        <div className="font-medium text-gray-800">Modelo: {item.name}</div>
+                                                        {item.description && <div className="text-gray-500">{item.description}</div>}
+                                                        {item.frunce ? (
+                                                          <div className="text-gray-500">Frunce: {item.frunce}</div>
+                                                        ) : null}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {selectedModel && (
+                                                    <p className="mt-3 text-xs text-gray-700">Modelo: {selectedModel}</p>
+                                                )}
+                                                {selectedDescription && (
+                                                    <p className="mt-2 text-xs text-gray-500">{selectedDescription}</p>
+                                                )}
+                                                {selectedFrunce ? (
+                                                    <p className="mt-2 text-xs text-gray-500">Frunce: {selectedFrunce}</p>
+                                                ) : null}
+                                            </>
+                                        )}
+                                        <p className="mt-3 text-xs font-bold text-orange-600">Portes incluidos. Sin sorpresas.</p>
                                     </div>
                                     <a href="#" className="flex items-center gap-2 p-3 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors text-left justify-center">
                                         <PlayCircle size={20} className="shrink-0" />
@@ -339,3 +498,9 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
