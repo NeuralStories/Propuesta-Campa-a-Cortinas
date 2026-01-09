@@ -113,8 +113,8 @@ export const OrdersManager: React.FC = () => {
         created_at: order.created_at || '',
         total_price: order.total_price ?? '',
         total_units: order.total_units ?? '',
-        budget_number: order.budget_number || '',
-        budget_sent_at: (order as any).budget_sent_at || '',
+        budget_number: order.metadata?.budget_number || '',
+        budget_sent_at: order.metadata?.budget_sent_at || '',
         customer_razon_social: customer.razonSocial || '',
         customer_cif: customer.cif || '',
         customer_first_name: customer.firstName || '',
@@ -382,12 +382,14 @@ export const OrdersManager: React.FC = () => {
       }
       
       // Actualizar el pedido con el número de presupuesto
+      const nextMetadata = {
+        ...(order.metadata || {}),
+        budget_number: budgetNumber,
+        budget_sent_at: new Date().toISOString()
+      };
       await supabase
         .from('orders')
-        .update({ 
-          budget_number: budgetNumber,
-          budget_sent_at: new Date().toISOString()
-        })
+        .update({ metadata: nextMetadata })
         .eq('id', order.id);
       
       alert(`Presupuesto ${budgetNumber} enviado correctamente al cliente.`);

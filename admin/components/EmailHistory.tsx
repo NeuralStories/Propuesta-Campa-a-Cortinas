@@ -29,14 +29,14 @@ export const EmailHistory: React.FC = () => {
       // Obtener los pedidos con información de emails enviados
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select('id, reference_number, customer_info, budget_number, budget_sent_at, status, measurements, selected_type, selection, total_price, metadata')
+        .select('id, reference_number, customer_info, status, measurements, selected_type, selection, total_price, metadata')
         .order('created_at', { ascending: false });
 
       if (ordersError) throw ordersError;
 
       // Transformar los datos en formato de historial de emails
       const emailHistory: EmailHistory[] = ordersData
-        ?.filter(order => order.budget_sent_at && order.budget_number)
+        ?.filter(order => order.metadata?.budget_sent_at && order.metadata?.budget_number)
         .map(order => ({
           id: order.id,
           order_id: order.id,
@@ -45,11 +45,11 @@ export const EmailHistory: React.FC = () => {
           customer_name: order.customer_info?.razonSocial || 
             `${order.customer_info?.firstName} ${order.customer_info?.lastName}`,
           email_type: 'presupuesto_cliente' as const,
-          subject: `Presupuesto Cortinas - ${order.budget_number}`,
-          sent_at: order.budget_sent_at,
+          subject: `Presupuesto Cortinas - ${order.metadata?.budget_number}`,
+          sent_at: order.metadata?.budget_sent_at,
           status: 'sent' as const,
           template_data: {
-            budget_number: order.budget_number,
+            budget_number: order.metadata?.budget_number,
             customer_info: order.customer_info
           },
           order_data: order
