@@ -24,11 +24,17 @@ export default function App() {
 
   useEffect(() => {
     const checkRoute = () => {
-      setIsAdminRoute(window.location.hash.startsWith('#/admin'));
+      const isAdminPath = window.location.pathname.startsWith('/admin');
+      const isAdminHash = window.location.hash.startsWith('#/admin');
+      setIsAdminRoute(isAdminPath || isAdminHash);
     };
     checkRoute();
     window.addEventListener('hashchange', checkRoute);
-    return () => window.removeEventListener('hashchange', checkRoute);
+    window.addEventListener('popstate', checkRoute);
+    return () => {
+      window.removeEventListener('hashchange', checkRoute);
+      window.removeEventListener('popstate', checkRoute);
+    };
   }, []);
 
   const [step, setStep] = useState(0); // 0 = Welcome Screen
