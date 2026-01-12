@@ -65,6 +65,7 @@ export const generateCustomerEmailTemplate = (data: EmailTemplateData): string =
 
   const items = selectionSummary || [];
   const logoUrl = resolvePublicImageUrl('/image/egea-evolucio-g.png');
+  const logoUrl = resolvePublicImageUrl('/image/egea-evolucio-g.png');
 
 
 
@@ -397,6 +398,7 @@ export const generateAdminEmailTemplate = (data: EmailTemplateData): string => {
   const currentDate = new Date().toLocaleDateString('es-ES');
 
   const items = selectionSummary || [];
+  const logoUrl = resolvePublicImageUrl('/image/egea-evolucio-g.png');
 
 
 
